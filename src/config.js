@@ -6,11 +6,12 @@
  *
  * Required to run with real data:
  *   SAM_API_KEY       — from sam.gov/profile/details  (free)
- *   CF_ACCOUNT_ID     — from Cloudflare dashboard → right sidebar
- *   CF_API_TOKEN      — Cloudflare API token with Browser Rendering: Edit permission
  *   ANTHROPIC_API_KEY — from console.anthropic.com
  *
- * The agent runs in demo mode if any of these are absent.
+ * Optional:
+ *   MODEL — Claude model id (default: claude-sonnet-4-5)
+ *
+ * The agent runs in demo mode if SAM_API_KEY or ANTHROPIC_API_KEY is absent.
  */
 
 try {
@@ -22,7 +23,6 @@ try {
 
 export const config = {
   SAM_API_KEY:       process.env.SAM_API_KEY       ?? '',
-  CF_ACCOUNT_ID:     process.env.CF_ACCOUNT_ID     ?? '',
-  CF_API_TOKEN:      process.env.CF_API_TOKEN       ?? '',
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
+  MODEL:             process.env.MODEL             ?? 'claude-sonnet-4-5',
 };

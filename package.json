@@ -1,19 +1,23 @@
 {
-  "name": "sam-contract-agent",
-  "version": "0.1.0",
-  "description": "AI agent that finds and analyzes profitable government contract opportunities from SAM.gov",
+  "name": "sam-contract-scanner",
+  "version": "0.2.0",
+  "description": "Scans SAM.gov for government contract opportunities and uses Claude to score them. Outputs a CLI report and optional JSON.",
   "type": "module",
   "main": "src/agent.js",
   "scripts": {
     "start": "node src/agent.js",
     "dev": "node --watch src/agent.js"
   },
+  "engines": {
+    "node": ">=18.17"
+  },
   "keywords": [
     "government-contracting",
     "sam.gov",
+    "claude",
+    "anthropic",
     "ai-agent",
-    "cloudflare",
-    "claude"
+    "playwright"
   ],
   "license": "MIT",
   "dependencies": {

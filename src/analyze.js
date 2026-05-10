@@ -34,7 +34,7 @@ export async function analyzeOpportunity(opp) {
       'x-api-key':         config.ANTHROPIC_API_KEY,
     },
     body: JSON.stringify({
-      model:      'claude-sonnet-4-20250514',
+      model:      config.MODEL,
       max_tokens: 1024,
       system:     SYSTEM_PROMPT,
       messages:   [{ role: 'user', content: buildPrompt(opp) }],
@@ -42,7 +42,10 @@ export async function analyzeOpportunity(opp) {
   });
 
   if (!res.ok) {
-    throw new Error(`Claude API error ${res.status}: ${await res.text()}`);
+    // Read and discard the body so we don't echo any server-side detail
+    // (which can include the request URL) into our own logs.
+    await res.text().catch(() => '');
+    throw new Error(`Claude API error ${res.status}`);
   }
 
   const data = await res.json();
