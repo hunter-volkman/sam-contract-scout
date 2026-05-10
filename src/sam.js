@@ -63,7 +63,10 @@ export async function fetchOpportunities(opts = {}) {
   const res = await fetch(`${BASE_URL}?${params}`);
 
   if (!res.ok) {
-    throw new Error(`SAM.gov API error ${res.status}: ${await res.text()}`);
+    // Don't echo the response body — SAM.gov 4xx errors sometimes include
+    // the request URL, which contains api_key as a query parameter.
+    await res.text().catch(() => '');
+    throw new Error(`SAM.gov API error ${res.status}`);
   }
 
   const data = await res.json();

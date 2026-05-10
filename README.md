@@ -1,89 +1,186 @@
-# SAM Contract Agent
+# SAM Contract Scanner
 
-An AI agent that finds profitable government contract opportunities on
-[SAM.gov](https://sam.gov), enriches them with full solicitation text via the
-[Cloudflare /crawl endpoint](https://developers.cloudflare.com/browser-rendering/rest-api/crawl-endpoint/),
-and uses Claude to score, rank, and produce actionable briefs.
+A small command-line tool that pulls active solicitations from
+[SAM.gov](https://sam.gov), renders the JavaScript-heavy detail pages with
+Playwright, and asks [Claude](https://www.anthropic.com/claude) to score
+each opportunity, flag risks, and sketch a proposal outline.
 
----
-
-## Architecture
-
-```
-SAM.gov API           Cloudflare /crawl        Claude
-─────────────         ─────────────────        ──────
-Structured metadata   Full solicitation text   Score + brief
-NAICS / keyword       Rendered SPA content     Go / no-go signal
-Posted date / agency  Markdown output          Proposal outline
-```
-
-**Why two data sources?**
-
-The SAM.gov API returns excellent structured metadata (agency, NAICS code,
-set-aside type, deadline) but the actual solicitation text — scope of work,
-evaluation criteria, certifications required — lives on the SAM.gov detail
-page, which is a JavaScript-rendered SPA. The Cloudflare `/crawl` endpoint
-handles the JS rendering and returns clean Markdown that Claude can reason about.
+It is **read-only**. It finds and scores opportunities. It does not
+register your business, draft full proposals, or submit bids — those are
+the obvious next steps for anyone forking this.
 
 ---
 
-## Quick start
+## What it actually does
 
-### 1. Install
+```
+SAM.gov API     →  Playwright       →  Claude         →  CLI report
+─────────────      ─────────────       ────────────       ──────────
+Structured         Renders the JS      Scores 1–10        Decision,
+metadata: NAICS,   single-page-app     and produces a     score bar,
+agency, deadline,  detail page so      go / no-go +       win factors,
+posted date,       the full scope      proposal           risks,
+set-aside.         of work is text.    outline.           and outline.
+```
+
+A single run takes ~1–3 minutes and costs roughly $0.01–0.05 in Claude
+tokens, depending on how many opportunities you analyze (`--topN`).
+
+---
+
+## Quick start (no API keys required)
 
 ```bash
+git clone <this-repo>
+cd sam-contract-scanner
 npm install
-```
-
-### 2. Configure credentials
-
-Copy `.env.example` to `.env` and fill in your keys:
-
-```bash
-cp .env.example .env
-```
-
-| Variable            | Where to get it                                                    |
-|---------------------|--------------------------------------------------------------------|
-| `SAM_API_KEY`       | [sam.gov/profile/details](https://sam.gov/profile/details) — free |
-| `CF_ACCOUNT_ID`     | Cloudflare dashboard → right sidebar                               |
-| `CF_API_TOKEN`      | Cloudflare → API Tokens → Browser Rendering: Edit permission       |
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com)             |
-
-> **Demo mode** — all four keys are optional. The agent runs with sample data
-> if any credential is absent, so you can explore the output immediately.
-
-### 3. Run
-
-```bash
+npx playwright install chromium     # only the first time
 npm start
 ```
+
+With no `.env` file, the scanner runs in **demo mode** with three
+sample opportunities so you can see the report format before signing up
+for anything.
+
+```
+══════════════════════════════════════════════════════════════
+  SAM Contract Scanner  —  Opportunity Report
+  Generated: 2026-05-10 14:22:01
+══════════════════════════════════════════════════════════════
+
+  Scanned 3 • 2 GO • 1 MAYBE • 0 NO-GO
+
+
+  #1  Cloud Migration and DevSecOps Support Services
+  DEPARTMENT OF THE ARMY
+  ────────────────────────────────────────────────────────────
+  Decision:   ✓ GO
+  Score:      ████████░░  8/10
+  Value:      $2.4M
+  Deadline:   2026-04-15
+  Set-aside:  Small Business
+  NAICS:      541511
+  Link:       https://sam.gov/opp/MOCK-001/view
+
+  Summary
+    Strong opportunity with clear scope for cloud migration to
+    AWS GovCloud. Small Business set-aside limits competition…
+```
+
+## Real-data mode
+
+Copy `.env.example` to `.env` and fill in two keys:
+
+| Variable            | Where to get it                                                       | Cost |
+|---------------------|------------------------------------------------------------------------|------|
+| `SAM_API_KEY`       | [sam.gov/profile/details](https://sam.gov/profile/details) — free      | $0   |
+| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com)                 | usage-based |
+
+Optional:
+
+| Variable            | Default               | Purpose                                  |
+|---------------------|-----------------------|------------------------------------------|
+| `MODEL`             | `claude-sonnet-4-5`   | Claude model id used for analysis        |
+
+Then `npm start` again — same command, real data.
 
 ---
 
 ## Configuration
 
-Edit the `SEARCH` object at the top of `src/agent.js`:
+Three precedence levels, highest first:
 
-```js
-const SEARCH = {
-  keywords:     'information technology software development',
-  naicsCode:    '541511',   // Custom Computer Programming Services
-  postedWithin: 30,         // days
-  maxResults:   10,         // how many to fetch from SAM.gov
-  topN:         3,          // how many to deeply analyze (costs Cloudflare browser time)
-};
+1. **CLI flags** (per-run overrides)
+2. **`search.config.json`** (project root, persistent defaults)
+3. **Hardcoded defaults** in [src/args.js](src/args.js)
+
+### CLI flags
+
+```bash
+npm start -- --keywords="laboratory equipment"
+npm start -- --naics=334516 --maxValue=25000
+npm start -- --keywords="office chairs" --postedWithin=7 --topN=5
+npm start -- --json --out=results.json
+npm start -- --help
 ```
 
-Common NAICS codes for IT services:
+| Flag             | Type    | Default                                              | Notes |
+|------------------|---------|------------------------------------------------------|-------|
+| `--keywords`     | string  | `"supply delivery office equipment electronics"`     | Full-text search passed to SAM.gov |
+| `--naics`        | string  | `423430`                                             | 6-digit NAICS code |
+| `--maxValue`     | number  | `50000`                                              | Drops opps with a confirmed award above this |
+| `--postedWithin` | number  | `30`                                                 | Days back to search |
+| `--maxResults`   | number  | `25`                                                 | Records to fetch (SAM cap: 100/page) |
+| `--topN`         | number  | `3`                                                  | How many to render + analyze with Claude |
+| `--json`         | bool    | `false`                                              | Also print the analyzed payload to stdout |
+| `--out=<path>`   | string  | —                                                    | Write the analyzed payload to a JSON file |
+| `--help`, `-h`   | —       | —                                                    | Show the help screen |
 
-| Code     | Description                          |
-|----------|--------------------------------------|
-| `541511` | Custom Computer Programming Services |
-| `541512` | Computer Systems Design Services     |
-| `541519` | Other Computer Related Services      |
-| `541330` | Engineering Services                 |
-| `541613` | Marketing Consulting Services        |
+### `search.config.json`
+
+```json
+{
+  "keywords":     "supply delivery office equipment electronics furnishings",
+  "naicsCode":    "423430",
+  "maxValue":     50000,
+  "postedWithin": 30,
+  "maxResults":   25,
+  "topN":         3
+}
+```
+
+Common NAICS codes for commodity/supply contracts:
+
+| Code     | Description                                  |
+|----------|----------------------------------------------|
+| `423430` | Computer Equipment Merchant Wholesalers      |
+| `337214` | Office Furniture Manufacturing               |
+| `423210` | Furniture Merchant Wholesalers               |
+| `334111` | Electronic Computer Manufacturing            |
+| `334516` | Analytical Laboratory Instrument Mfg         |
+| `541511` | Custom Computer Programming Services         |
+
+---
+
+## JSON output
+
+For piping into another tool (a database loader, a dashboard, a follow-up
+agent), use `--out` or `--json`:
+
+```bash
+npm start -- --keywords="office chairs" --out=results.json
+```
+
+```jsonc
+{
+  "generatedAt": "2026-05-10T18:22:01.123Z",
+  "search": { "keywords": "office chairs", "naicsCode": "423430", "maxValue": 50000, "postedWithin": 30 },
+  "count": 3,
+  "opportunities": [
+    {
+      "id": "abc123…",
+      "title": "Office Chairs — Camp Lejeune",
+      "agency": "DEPARTMENT OF THE NAVY",
+      "naicsCode": "423210",
+      "uiLink": "https://sam.gov/opp/abc123/view",
+      "responseDeadline": "2026-05-25",
+      "analysis": {
+        "score": 8,
+        "goNoGo": "GO",
+        "summary": "…",
+        "winFactors": ["…"],
+        "risks": ["…"],
+        "proposalOutline": ["…"],
+        "keyRequirements": ["…"]
+      }
+    }
+  ]
+}
+```
+
+The raw Playwright-rendered page text is intentionally stripped from the
+JSON output — it's an order of magnitude larger than the structured
+fields and was only needed as input to Claude.
 
 ---
 
@@ -91,53 +188,71 @@ Common NAICS codes for IT services:
 
 ```
 src/
-  agent.js    Main pipeline — orchestrates all steps
-  sam.js      SAM.gov Opportunities API client
-  crawl.js    Cloudflare /crawl endpoint client
-  analyze.js  Claude analysis module
-  report.js   CLI report formatter
-  config.js   Credentials from environment variables
+  agent.js    Main pipeline — orchestrates all 5 steps
+  sam.js      SAM.gov Opportunities API client + demo data
+  crawl.js    Playwright renderer with retry + backoff
+  analyze.js  Claude prompt + response parser + demo data
+  report.js   Colored CLI report formatter
+  config.js   Environment-variable loader
+  args.js     CLI flag + JSON config resolver
 ```
-
----
-
-## Cloudflare /crawl notes
-
-- Launched March 10, 2026 — currently in open beta
-- SAM.gov pages are JavaScript-rendered SPAs, so `render: true` is required
-- `limit: 1` — we only need the single detail page, not the whole site
-- Results are cached for 14 days, so re-running for the same URL is fast
-- Free tier: 5 crawl jobs/day, 100 pages/job — sufficient for scouting
-- Paid ($5/month): ~12,000 pages/month of browser-rendered content
 
 ---
 
 ## SAM.gov API notes
 
-- Free API key available to any registered sam.gov user
-- Public (no account): 10 requests/day — enough for testing
-- Registered user: 1,000 requests/day — sufficient for production use
-- Opportunities updated daily; awards updated weekly
+- Free API key for any registered sam.gov user (10 req/day unauthenticated, 1,000/day registered).
+- Opportunities update daily; awards weekly.
+- The endpoint is hard-capped at 100 results per request. This scanner does
+  not paginate — set `--maxResults` accordingly, or fork and add a loop.
+- Rate-limit responses (`429`) are surfaced as plain errors; there's no
+  built-in backoff for the SAM.gov call itself (only for the Playwright crawl).
 
 ---
 
-## Extending the agent
+## Known limitations
 
-**Add your capability profile** — edit the system prompt in `analyze.js` to
-include your firm's clearances, certifications, and past performance. This
-makes Claude's go/no-go decisions specific to your actual competitive position.
+This is deliberately a small, single-shot scanner. It is **not**:
 
-**Persist results** — pipe `analyzed` in `agent.js` to a JSON file or SQLite
-database to track opportunities over time and spot patterns.
+- a database — every run is independent; results live only as long as
+  the process (or the file you pass to `--out`).
+- a scheduler — there's no daemon, cron, or watcher. Wrap it yourself.
+- a proposal writer — Claude produces an *outline* and risks, not a
+  finished response.
+- a bid-submission tool — SAM.gov submission requires authenticated
+  flows that are intentionally outside scope.
+- production-hardened — no test suite, no retries on the SAM API,
+  no caching of prior analyses.
 
-**Alerts** — add a step after the report that posts to Slack or sends an email
-when any opportunity scores 8 or above.
+The Playwright crawl is the most fragile step. It depends on SAM.gov's
+DOM structure staying stable; on failure it now retries 3× with
+exponential backoff and falls through to metadata-only analysis if the
+page never renders.
 
-**Scheduled runs** — add a cron job to run daily at 6 AM and catch new
-postings before competitors do.
+---
+
+## Where to take this next
+
+If you fork this and want to grow it into something bigger, the
+obvious additions are:
+
+1. **Persistence** — write `--out` JSON into SQLite or Postgres so you
+   can track opportunities over time and avoid re-analyzing duplicates.
+2. **Capability profile** — replace the generic system prompt in
+   [src/analyze.js](src/analyze.js) with your firm's certifications,
+   past performance, and pricing model so scores reflect *your*
+   competitive position, not a hypothetical one.
+3. **Prompt caching** — for repeated runs over the same solicitation
+   text, [Anthropic's prompt caching](https://docs.claude.com/en/docs/build-with-claude/prompt-caching)
+   can cut costs by ~90%.
+4. **Pagination** — wrap [src/sam.js](src/sam.js) in a loop using
+   `offset` to break past the 100-result cap.
+5. **Adjacent sources** — state and local procurement portals (BidNet,
+   Periscope) have lower competition and looser past-performance
+   requirements than federal SAM.
 
 ---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE). Contributions and forks welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).

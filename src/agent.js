@@ -1,37 +1,44 @@
 /**
- * SAM Contract Agent
- * ------------------
+ * SAM Contract Scanner
+ * --------------------
  * Finds small government contracts for physical goods (office supplies,
- * electronics, equipment) on SAM.gov, enriches them with full solicitation
- * text via Playwright, and uses Claude to score, rank, and produce
- * actionable briefs.
+ * electronics, equipment) on SAM.gov, enriches them with the full
+ * solicitation text via Playwright, and uses Claude to score, rank, and
+ * produce actionable briefs.
  *
  * Data flow:
- *   SAM.gov API       → fetch candidates
- *   → pre-filter      → drop confirmed over-budget opportunities
- *   → Playwright      → full solicitation text
- *   → Claude          → scored brief + go/no-go + fulfillment plan
+ *   SAM.gov API   → fetch candidates
+ *   → pre-filter  → drop confirmed over-budget opportunities
+ *   → Playwright  → render the JS-heavy SAM.gov detail page to text
+ *   → Claude      → scored brief + go/no-go + proposal outline
+ *   → report      → CLI summary  (and optional JSON output)
  *
  * Parameters:
  *   Resolved from CLI flags > search.config.json > hardcoded defaults.
- *
- *   npm start -- --keywords="laboratory equipment" --maxValue=25000
+ *   Run `npm start -- --help` for the full flag list.
  */
 
-import { fetchOpportunities }                    from './sam.js';
-import { crawlOpportunityPage }                  from './crawl.js';
-import { analyzeOpportunity }                    from './analyze.js';
-import { formatReport }                          from './report.js';
-import { resolveSearchParams, printSearchParams } from './args.js';
+import { writeFileSync }                           from 'fs';
+import { fetchOpportunities }                      from './sam.js';
+import { crawlOpportunityPage }                    from './crawl.js';
+import { analyzeOpportunity }                      from './analyze.js';
+import { formatReport }                            from './report.js';
+import { resolveSearchParams, printSearchParams, printHelp } from './args.js';
 
 // ─── Main pipeline ────────────────────────────────────────────────────────────
 
 async function run() {
+  const SEARCH = resolveSearchParams();
+
+  if (SEARCH.help) {
+    printHelp();
+    process.exit(0);
+  }
+
   console.log('\n╔══════════════════════════════════════════════╗');
-  console.log('║         SAM Contract Agent  —  Starting      ║');
+  console.log('║       SAM Contract Scanner  —  Starting      ║');
   console.log('╚══════════════════════════════════════════════╝\n');
 
-  const SEARCH = resolveSearchParams();
   printSearchParams(SEARCH);
 
   // Step 1 — Pull structured opportunity metadata from SAM.gov
@@ -65,17 +72,28 @@ async function run() {
     process.exit(0);
   }
 
-  // Step 3 — Enrich the top candidates with full page content via Playwright
+  // Step 3 — Enrich the top candidates with full page content via Playwright.
+  // Demo opportunities (id starting with "MOCK-") have synthetic URLs, so we
+  // skip the crawl for them to keep the demo run fast.
   const candidates = preFiltered.slice(0, SEARCH.topN);
-  console.log(`▶ Step 3  Crawling ${candidates.length} opportunity pages via Playwright…`);
+  const realCandidates = candidates.filter((o) => !o.id?.startsWith('MOCK-'));
+
+  if (realCandidates.length === 0) {
+    console.log(`▶ Step 3  Skipping Playwright crawl — demo opportunities only.\n`);
+  } else {
+    console.log(`▶ Step 3  Crawling ${realCandidates.length} opportunity pages via Playwright…`);
+  }
 
   const enriched = await Promise.all(
     candidates.map(async (opp) => {
+      if (opp.id?.startsWith('MOCK-')) {
+        return { ...opp, pageText: '' };
+      }
       const pageText = await crawlOpportunityPage(opp.uiLink);
       return { ...opp, pageText };
     })
   );
-  console.log('  Crawl complete.\n');
+  if (realCandidates.length > 0) console.log('  Crawl complete.\n');
 
   // Step 4 — Ask Claude to analyze each enriched opportunity
   console.log('▶ Step 4  Running Claude analysis on each opportunity…');
@@ -88,14 +106,41 @@ async function run() {
     console.log(` score ${analysis.score}/10`);
   }
 
-  // Step 5 — Sort by score and print the report
+  // Step 5 — Sort by score and emit the report
   analyzed.sort((a, b) => b.analysis.score - a.analysis.score);
 
   console.log('\n▶ Step 5  Generating report…\n');
   const report = formatReport(analyzed);
   console.log(report);
 
+  // Step 6 — Optional JSON output for downstream tooling
+  if (SEARCH.out) {
+    writeFileSync(SEARCH.out, JSON.stringify(buildJsonPayload(analyzed, SEARCH), null, 2));
+    console.log(`  Wrote ${analyzed.length} analyzed opportunities to ${SEARCH.out}\n`);
+  }
+  if (SEARCH.json) {
+    console.log(JSON.stringify(buildJsonPayload(analyzed, SEARCH), null, 2));
+  }
+
   return analyzed;
+}
+
+/**
+ * Strip the bulky raw page text before serializing — it is not useful
+ * downstream and bloats the output by an order of magnitude.
+ */
+function buildJsonPayload(analyzed, search) {
+  return {
+    generatedAt: new Date().toISOString(),
+    search: {
+      keywords:     search.keywords,
+      naicsCode:    search.naicsCode,
+      maxValue:     search.maxValue,
+      postedWithin: search.postedWithin,
+    },
+    count: analyzed.length,
+    opportunities: analyzed.map(({ pageText, ...rest }) => rest),
+  };
 }
 
 run().catch((err) => {
