@@ -1,4 +1,4 @@
-# SAM Contract Scanner
+# SAM Contract Scout
 
 A small command-line tool that pulls active solicitations from
 [SAM.gov](https://sam.gov), renders the JavaScript-heavy detail pages with
@@ -32,19 +32,19 @@ tokens, depending on how many opportunities you analyze (`--topN`).
 
 ```bash
 git clone <this-repo>
-cd sam-contract-scanner
+cd sam-contract-scout
 npm install
 npx playwright install chromium     # only the first time
 npm start
 ```
 
-With no `.env` file, the scanner runs in **demo mode** with three
+With no `.env` file, the tool runs in **demo mode** with three
 sample opportunities so you can see the report format before signing up
 for anything.
 
 ```
 ══════════════════════════════════════════════════════════════
-  SAM Contract Scanner  —  Opportunity Report
+  SAM Contract Scout  —  Opportunity Report
   Generated: 2026-05-10 14:22:01
 ══════════════════════════════════════════════════════════════
 
@@ -203,7 +203,7 @@ src/
 
 - Free API key for any registered sam.gov user (10 req/day unauthenticated, 1,000/day registered).
 - Opportunities update daily; awards weekly.
-- The endpoint is hard-capped at 100 results per request. This scanner does
+- The endpoint is hard-capped at 100 results per request. This tool does
   not paginate — set `--maxResults` accordingly, or fork and add a loop.
 - Rate-limit responses (`429`) are surfaced as plain errors; there's no
   built-in backoff for the SAM.gov call itself (only for the Playwright crawl).
@@ -212,7 +212,7 @@ src/
 
 ## Known limitations
 
-This is deliberately a small, single-shot scanner. It is **not**:
+This is deliberately a small, single-shot tool. It is **not**:
 
 - a database — every run is independent; results live only as long as
   the process (or the file you pass to `--out`).

@@ -1,6 +1,6 @@
 /**
- * SAM Contract Scanner
- * --------------------
+ * SAM Contract Scout
+ * ------------------
  * Finds small government contracts for physical goods (office supplies,
  * electronics, equipment) on SAM.gov, enriches them with the full
  * solicitation text via Playwright, and uses Claude to score, rank, and
@@ -36,7 +36,7 @@ async function run() {
   }
 
   console.log('\n╔══════════════════════════════════════════════╗');
-  console.log('║       SAM Contract Scanner  —  Starting      ║');
+  console.log('║        SAM Contract Scout  —  Starting       ║');
   console.log('╚══════════════════════════════════════════════╝\n');
 
   printSearchParams(SEARCH);
