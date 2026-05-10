@@ -92,7 +92,7 @@ function parseCliArgs() {
 // ─── Help text ────────────────────────────────────────────────────────────────
 
 const HELP_TEXT = `
-SAM Contract Scanner — find and score government contract opportunities
+SAM Contract Scout — find and score government contract opportunities
 
 Usage:
   npm start                                     run with defaults / search.config.json

@@ -42,7 +42,7 @@ export function formatReport(analyzed) {
 
   // ─── Header ───────────────────────────────────────────────────────────
   lines.push(c.cyan('═'.repeat(64)));
-  lines.push(c.bold('  SAM Contract Scanner  —  Opportunity Report'));
+  lines.push(c.bold('  SAM Contract Scout  —  Opportunity Report'));
   lines.push(c.dim(`  Generated: ${new Date().toLocaleString()}`));
   lines.push(c.cyan('═'.repeat(64)));
   lines.push('');

@@ -1,5 +1,5 @@
 {
-  "name": "sam-contract-scanner",
+  "name": "sam-contract-scout",
   "version": "0.2.0",
   "description": "Scans SAM.gov for government contract opportunities and uses Claude to score them. Outputs a CLI report and optional JSON.",
   "type": "module",
